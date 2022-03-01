@@ -38,7 +38,9 @@ def convert_grammar(text):  # Замена
         #
         "Anom=Yes": "anom",
         #
+#        "Aspect=Imp": "ipf",
         "Aspect=Imp": "",
+#        "Aspect=Perf": "pf",
         "Aspect=Perf": "",
         #
         "Case=Nom": "nom",
@@ -57,6 +59,8 @@ def convert_grammar(text):  # Замена
         "Clitic=Yes": "cl",
         "Clitic=No": "ton",
         #
+        "Damaged=Yes": "damaged",
+        #
         "Degree=Pos": "comp",
         "Degree=Cmp": "comp",
         "Degree=Cmp2": "comp2",
@@ -66,6 +70,8 @@ def convert_grammar(text):  # Замена
         "Gender=Fem": "f",
         "Gender=Neut": "n",
         "Gender=Com": "mf",
+        #
+        "Indecl=Yes": "0",
         #
         "Mood=Cnd": "cond",
         "Mood=Imp": "imper",
@@ -81,9 +87,9 @@ def convert_grammar(text):  # Замена
         "NumForm=Cyril": "digit",
         "NumForm=Roman": "digit",
         "NumForm=Word": "",
-        "NumType=Card": "cardnum",
-        "NumType=Ord": "ordnum",
-        "NumType=Sets": "colnum",
+        "NumType=Card": "card",
+        "NumType=Ord": "ord",
+        "NumType=Sets": "coll",
         #
         "Person=1": "1p",
         "Person=2": "2p",
@@ -114,6 +120,9 @@ def convert_grammar(text):  # Замена
         "Tense=Perf": "perf",
         "Tense=Pqp": "pqperf",
         #
+        "Transit=Tran": "tran",
+        "Transit=Intr": "intr",
+        #
         "Typo=Yes": "distort",
         #
         "Variant=Short": "brev",
@@ -130,6 +139,7 @@ def convert_grammar(text):  # Замена
         "Voice=Pass": "pass",
         "Voice=Mid": "med",
         "Voice=Necess": "debit"
+## other features not included in the list: coll (aggregate noun), pl_tant (pl. tantum), redundand (лишнее), crossed_out (зачеркнуто), without_copula, in_phrase (в соч.), reverse_voices (compared to the Greek source test)
     }
     new_gram = []
     for gram in grammar:
@@ -142,21 +152,23 @@ def convert_grammar(text):  # Замена
     return ""
 
 
-def special_cases(lex, upos, feat):  # Замена уникальных кейсов, если нет делать обычную замену
+def special_cases(lex, upos, feat, misc):  # Замена уникальных кейсов, если нет делать обычную замену
     if lex in ["один", "одиный", "единъ", "единый"]:
         return "ANUM"
-    if upos == "PRAEDIC" and re.match(r'Case=', feat):
+    if upos == "PRAEDIC" and 'Case=' in feat:
         return "PRAEDICPRO"
-    if upos == "ADJ" and re.match(r'Decl=ANUM', feat):
+    if upos == "ADJ" and 'Decl=ANUM' in misc:
         return "ANUM"
     return convert_upos(upos)  # Конвертируем части речи в другой тагсет
 
 
 def text_into_xml(text_str):
     text = text_str.strip("\n").split("\t")  # Получить текст в виде списка
+    if "NoIndex=Yes" in text[9]:
+        return text[1]
     word = text[1]
     lex = text[2]
-    gr = special_cases(text[2], text[3], text[5])
+    gr = special_cases(text[2], text[3], text[5], text[9])
     feature = convert_grammar(text[5])  # convert grammatical features
     wf = text[9].split("|")[0]
     xml_style = f'<w><ana lex="{lex}" gr="{gr}{feature}" {wf}/>{word}</w>{space_after_check(text[9])}'
@@ -210,6 +222,8 @@ def edit_punct_xml(xml):  # Убираем строчки с пунктуаци�
             punct = punct[-1]
             if line != 0:  # Если пунктуация не первая строчка
                 new_xml[-1] += punct
+            else:
+                new_xml.append(punct)
         else:
             new_xml.append(xml[line])
     return new_xml
@@ -228,27 +242,27 @@ def create_xml(path, folder=False):
     tail = os.path.split(path)[1]
     with open(path, 'r', encoding='utf-8') as f:
         text = f.read()
-        paragraphs = get_paragraphs(text)
+        paragraphs = get_paragraphs(text) # Разбить на параграфы
         if folder:
             folder_name = '/xml/'
         with open(f'{head}{folder_name}{tail.split(".")[0]}.xml', 'w',
                   encoding='utf-8', newline='\n') as outf:
             print('<?xml version="1.0" encoding="UTF-8"?>\n<html><body>', file=outf)
-            for i in range(len(paragraphs)):
+            for i in range(len(paragraphs)): # Идем по параграфам
                 xml = []  # Тело
                 tags = []  # Шапка
                 for sent in paragraphs[i].split("\n"):
-                    if sent.split("\t")[0].isdigit():
-                        xml.append(text_into_xml(sent))
+                    if sent.split("\t")[0].isdigit(): # Если текст в формате conllu
+                        xml.append(text_into_xml(sent)) # Переводит текст в xml формат
                     else:
                         tags.append(sent.strip("\n"))
                 if len(tags) > 0:
                     if i != 0:  # Если не первый параграф
-                        print(create_tags(tags, False), file=outf)
+                        print(create_tags(tags, False), file=outf) # Создает теги <p>, <se> и т.д.
                     else:
                         print(create_tags(tags, True), file=outf)
-                xml = edit_punct_xml(xml)
-                xml = remove_empty_lex(xml)
+                xml = edit_punct_xml(xml) # Убрать теги из пунктуации, перенести на одну строку с разборами
+                xml = remove_empty_lex(xml) # Убирает атрибут lex из разбора, если пустая лемма
                 print(f"\n".join(xml), file=outf)
             print('</se></p>\n</body></html>', file=outf)
 
